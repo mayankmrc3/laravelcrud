@@ -10,18 +10,20 @@ class SignupRepository
 
     public function __construct()
     {
-        $this->usermodel = new Signup();
+        $this->usermodel = new User();
     }
 
     public function insertsave($data)
     {
         try 
         {
-            $signup1 = new Signup();
-            $signup1->name = $data['name'];
-            $signup1->status = $data['status'];
-            $signup1->save();
-            $message['success'] = "Record saved Successfully";
+            $user = new User;
+            $user->name  = $data['mname'];
+            $user->email = $data['email'];
+            $user->password =$data['password'];
+            $user->save();
+            return("inserted successfully");
+            
         } 
         catch (Exception $e) 
         {

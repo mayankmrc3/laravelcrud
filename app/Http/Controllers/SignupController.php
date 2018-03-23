@@ -5,9 +5,17 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use Illuminate\Auth\validate;
 use Illuminate\Http\Request;
+use App\Services\Signupservice;
 
 class SignupController extends Controller
 {
+    private $taskservice;
+
+    public function __construct()
+    {
+        $this->taskservice = new Signupservice();
+    }
+
     /**
      * Display a listing of the resource.
      *
@@ -15,8 +23,7 @@ class SignupController extends Controller
      */
     public function index()
     {
-
-        $members = User::latest()->paginate(20);
+        $members = User::latest()->paginate(5);
         return view('signup',compact('members'))->with('i', (request()->input('page', 1) - 1) * 5);
     }
 
@@ -42,13 +49,13 @@ class SignupController extends Controller
             'name' => 'required',
             'email' => 'required',
         ]);*/
-        $user = new User;
-        $user->name  = $request->get('mname');
-        $user->email = $request->get('email');
-        $user->password = $request->get('password');
-        $user->save();
-        //return("inserted successfully");
+        
+        $data= $request->all();
+
+        $message = $this->taskservice->insertsave($data);
         return redirect()->route('index')->with('success','Member created successfully');
+        echo json_encode($message);      
+       
     }
 
     /**
@@ -91,7 +98,7 @@ class SignupController extends Controller
         $user = User::find($id);
         $user->name = $request->get('mname');
         $user->email = $request->get('email');
-        $user->password = $request->get('password');
+        //$user->password = $request->get('password');
         $user->save();
         //return("inserted successfully");
         return redirect()->route('index')->with('success','User updated successfully');
@@ -108,5 +115,10 @@ class SignupController extends Controller
         $user = User::find($id);
         $user->delete();
         return redirect()->route('index')->with('success','User deleted successfully');
+    }
+
+    public function insertsave($data)
+    {
+        throw new \Exception('Method not implemented');
     }
 }
