@@ -80,7 +80,7 @@ class SignupController extends Controller
         
         $user = User::where('id', $id)
                         ->first();
-        $members = User::latest()->paginate(20);
+        $members = User::latest()->paginate(5);
         return view('signup',compact('members','user','id'))->with('i', (request()->input('page', 1) - 1) * 5);
         
         //return view('edit',compact('member'));

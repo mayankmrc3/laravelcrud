@@ -52,6 +52,7 @@
             </div>
         </div>
     </div>
+    @if(!empty($members))
     <div class="row">
         <div class="col-sm-12">
             <div class="table-responsive">
@@ -89,4 +90,5 @@
             </div>
         </div>
     </div>
+    @endif
 </div>
