@@ -4,6 +4,13 @@
 <div class="container">
     <div class="row">
         <div class="flex-center position-ref full-height">
+            @if (\Session::has('order_success'))
+                <div class="alert alert-success">
+                    <ul>
+                        <li>Payment done successfully.</li>
+                    </ul>
+                </div>
+            @endif
             @if (Route::has('login'))
                 <div class="top-right links">
                     @if (Auth::check())
@@ -48,6 +55,7 @@
                             </button></div>
                         </div>
                     </form>
+                    <a class="pull-right" href="{{route ('makeorder')}}">donate us</a>
                 </div>
             </div>
         </div>
@@ -59,7 +67,13 @@
                 <table class="table table-bordred table-striped" id="dataTable" role="grid" aria-describedby="dataTable_info" style="width: 100%;" width="100%" cellspacing="0">
                         <tr>
                             <th>#</th>
-                            <th >Name</th>
+                            <th >
+                                Name
+                                    <span class="fa fa-sort-asc">asc</span>
+                                
+                                    <span class="fa fa-sort-desc">desc</span>
+                                
+                            </th>
                             <th scope="col">Email</th>
                             <th scope="col">&nbsp;</th>
                             <th scope="col">&nbsp;</th>
