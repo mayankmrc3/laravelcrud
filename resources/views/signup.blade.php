@@ -22,7 +22,7 @@
                 </div>
             @endif
             <div class="panel panel-default">
-                <div class="panel-heading">Laravel Basic</div>
+                <div class="panel-heading">Quickbook Demo</div>
             <div class="panel-body">
                 <div class="content">
                     @if(isset($user))
@@ -35,14 +35,14 @@
                             <label for="name" class="col-md-4 control-label">Name</label> 
                             <div class="col-md-6"><input id="name" @if(isset($user)) value='{{$user->name}}' @endif name="mname" autofocus="autofocus" class="form-control" type="text"></div>
                         </div>
-                        <div class="form-group">
+                        <div class="form-group" style="display: none;">
                             <label for="email" class="col-md-4 control-label">Email</label>
-                            <div class="col-md-6"><input id="email"  @if(isset($user)) value='{{$user->email}}' @endif required="required" value='' class="form-control" type="email" name="email"></div>
+                            <div class="col-md-6"><input id="email"  @if(isset($user)) value='{{$user->email}}' @endif required="required" value='test@123.com' class="form-control" type="email" name="email"></div>
                         </div>
                         @if(!isset($user))
-                        <div class="form-group">
+                        <div class="form-group d-none"  style="display: none;">
                             <label for="password" class="col-md-4 control-label">Password</label>
-                            <div class="col-md-6"><input id="password" value='' type="password" class="form-control"  name="password"></div>
+                            <div class="col-md-6"><input id="password" value='121' type="password" class="form-control"  name="password"></div>
                         </div>
                         @endif    
                         <div class="form-group">
@@ -55,13 +55,16 @@
                             </button></div>
                         </div>
                     </form>
-                    <a class="pull-right" href="{{route ('makeorder')}}">donate us</a>
+                    <div style="position:relative;">
+                        <a class="btn btn-primary pull-right" href="{{route ('makeorder')}}">donate us</a>
+                        <a class="btn btn-primary" href="{{route ('qbo')}}">Connect to Quickbook</a>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
     @if(!empty($members))
-    <div class="row">
+    <div class="row"  style="display: none;">
         <div class="col-sm-12">
             <div class="table-responsive">
                 <table class="table table-bordred table-striped" id="dataTable" role="grid" aria-describedby="dataTable_info" style="width: 100%;" width="100%" cellspacing="0">

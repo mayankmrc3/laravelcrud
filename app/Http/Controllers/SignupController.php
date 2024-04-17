@@ -7,7 +7,33 @@ use Illuminate\Auth\validate;
 use Illuminate\Http\Request;
 use App\Services\Signupservice;
 use App\Http\Controllers\Alvee\WorldPay\lib\Worldpay;
+use DB;
+use Illuminate\Support\Facades\File;
 
+use QuickBooksOnline\API\Data\IPPPaymentMethod;
+use QuickBooksOnline\API\Data\IPPTerm;
+use QuickBooksOnline\API\DataService\DataService as Ds;
+use QuickBooksOnline\API\Facades\Customer;
+use QuickBooksOnline\API\Facades\Invoice;
+use QuickBooksOnline\API\Facades\Item;
+use QuickBooksOnline\API\Facades\Account;
+use QuickBooksOnline\API\Facades\Vendor;
+use QuickBooksOnline\API\Facades\RefundReceipt;
+use Carbon\Carbon;
+
+use QuickBooksOnline\API\Facades\Line;
+use Illuminate\Support\Facades\Log;
+use QuickBooksOnline\API\Data\IPPCustomField;
+
+use QuickBooksOnline\Payments\PaymentClient;
+use QuickBooksOnline\Payments\Modules\Card;
+use QuickBooksOnline\Payments\Operations\ChargeOperations;
+use QuickBooksOnline\Payments\Operations\CardOperations;
+use QuickBooksOnline\Payments\OAuth\{DiscoverySandboxURLs, DiscoveryURLs, OAuth2Authenticator, OAuth1Encrypter};
+use QuickBooksOnline\Payments\HttpClients\Request\{RequestInterface, IntuitRequest, RequestFactory};
+
+
+use QuickBooksOnline\Payments\HttpClients\core\{HttpClientInterface, HttpCurlClient};
 class SignupController extends Controller
 {
     private $taskservice;
@@ -22,9 +48,54 @@ class SignupController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
-    public function index()
+    public function index(Request $request)
     {
+        //dd($request->all());
         $members = User::sorted()->latest()->paginate(5);
+
+        if(isset($request['code']))
+        {
+            /*DB::table("qb_profile")->insert([
+                'realmId'=>$request->realmId,
+                'scope'=>$request->scope,
+                'code'=>$request->code
+            ]);*/
+            
+            $state = $request->state;
+            $code = $request->code;
+            $realmId = $request->realmId;
+
+            $created_on = Carbon::now()->toDateTimeString();
+
+            $auth_token = $this->generateTokenOnAuthorization($code, $realmId);
+            
+            $token_json1 = json_encode(
+                array_merge($auth_token, ['created_on' => $created_on])
+            );
+
+            $token_json = json_decode($token_json1);
+
+            //if($request->realmId != '4620816365040396740')
+            {
+                DB::table("qb_integration")->insert([
+                    'type'=>$token_json->token_type,
+                    'access_token'=>$token_json->access_token,
+                    'refresh_token'=>$token_json->refresh_token,
+                    'metadata'=>$token_json1,
+                    'created_on'=>$created_on,
+                    'token_type'=>$token_json->token_type,
+                    'expires_in'=>$token_json->expires_in,
+                    'x_refresh_token_expires_in'=>$token_json->x_refresh_token_expires_in,
+                    'realmId'=>$request->realmId,
+                    'scope'=>$request->scope,
+                    'code'=>$request->code
+                ]);
+            }
+            
+           // $this->check_and_create_customer($token_json,$token_json);
+            //dd("here");
+            return view('signup',compact('members'))->with('i', (request()->input('page', 1) - 1) * 5);
+        }
         return view('signup',compact('members'))->with('i', (request()->input('page', 1) - 1) * 5);
     } 
     
@@ -36,258 +107,10 @@ class SignupController extends Controller
     public function checkout(Request $request)
     {
         $data = $request->all();
-        $token    = $request->input( 'token' );
-        $total    = 50;
-        $key      = config('worldpay.sandbox.service');
-        $worldPay = new \Alvee\WorldPay\lib\Worldpay($key);
 
-        $billing_address = array
-        (
-            'address1'    => 'Address 1 here',
-            'address2'    => 'Address 2 here',
-            'address3'    => 'Address 3 here',
-            'postalCode'  => 'postal code here',
-            'city'        => 'city here',
-            'state'       => 'state here',
-            'countryCode' => 'GB',
-        );
-
-        try 
-        {
-            $response = $worldPay->createOrder(array(
-                'token'             => $token,
-                'directOrder'       => true,
-                'amount'            => (int)($total . "00"),
-                'currencyCode'      => 'GBP',
-                'name'              => "Name on Card",
-                'billingAddress'    => $billing_address,
-                'orderDescription'  => 'Order description',
-                'customerOrderCode' => 'Order code'
-            ));
-            if ($response['paymentStatus'] === 'SUCCESS') 
-            {
-                $worldpayOrderCode = $response['orderCode'];
-                
-               /*echo "<pre>";
-               print_r($response);*/
-               return redirect('/')->with('order_success', ['your message,here']); ;
-            } 
-            else 
-            {
-                // The card has been declined
-                throw new \Alvee\WorldPay\lib\WorldpayException(print_r($response, true));
-            }
-        } 
-        catch (\Alvee\WorldPay\lib\WorldpayException $e) 
-        {
-            echo 'Error code: ' . $e->getCustomCode() . '
-                  HTTP status code:' . $e->getHttpStatusCode() . '
-                  Error description: ' . $e->getDescription() . '
-                  Error message: ' . $e->getMessage();
-
-            // The card has been declined
-        } 
-        catch (\Exception $e) 
-        {
-            // The card has been declined
-            echo 'Error message: ' . $e->getMessage();
-        }
-
-        //$worldpay = new Alvee\WorldPay\lib\Worldpay(env("WORLDPAY_KEY"));
-/*
-        // Sometimes your SSL doesnt validate locally
-        // DONT USE IN PRODUCTION
-        $worldpay->disableSSLCheck(true);
-
-        $directOrder = isset($data['direct-order']) ? $data['direct-order'] : false;
-        $token = (isset($data['token'])) ? $data['token'] : null;
-        $name = $data['name'];
-        $shopperEmailAddress = $data['shopper-email'];
-
-        $amount = 0;
-        if (isset($data['amount']) && !empty($data['amount'])) {
-            $amount = is_numeric($data['amount']) ? $data['amount']*100 : -1;
-        }
-
-        $orderType = $data['order-type'];
-
-        $_3ds = (isset($data['3ds'])) ? $data['3ds'] : false;
-        $authorizeOnly = (isset($data['authorizeOnly'])) ? $data['authorizeOnly'] : false;
-        $customerIdentifiers = (!empty($data['customer-identifiers'])) ? json_decode($data['customer-identifiers']) : array();
-
-        include('header.php');
-
-        // Try catch
-        try {
-            // Customers billing address
-            $billing_address = array(
-                "address1"=> $data['address1'],
-                "address2"=> $data['address2'],
-                "address3"=> $data['address3'],
-                "postalCode"=> $data['postcode'],
-                "city"=> $data['city'],
-                "state"=> $data['state'],
-                "countryCode"=> $data['countryCode'],
-                "telephoneNumber"=> $data['telephoneNumber']
-            );
-
-            // Customers delivery address
-            $delivery_address = array(
-                "firstName" => $data['delivery-firstName'],
-                "lastName" => $data['delivery-lastName'],
-                "address1"=> $data['delivery-address1'],
-                "address2"=> $data['delivery-address2'],
-                "address3"=> $data['delivery-address3'],
-                "postalCode"=> $data['delivery-postcode'],
-                "city"=> $data['delivery-city'],
-                "state"=> $data['delivery-state'],
-                "countryCode"=> $data['delivery-countryCode'],
-                "telephoneNumber"=> $data['delivery-telephoneNumber']
-            );
-
-            if ($orderType == 'APM') {
-
-                $obj = array(
-                    'orderDescription' => $data['description'], // Order description of your choice
-                    'amount' => $amount, // Amount in pence
-                    'currencyCode' => $data['currency'], // Currency code
-                    'settlementCurrency' => $data['settlement-currency'], // Settlement currency code
-                    'name' => $name, // Customer name
-                    'shopperEmailAddress' => $shopperEmailAddress, // Shopper email address
-                    'billingAddress' => $billing_address, // Billing address array
-                    'deliveryAddress' => $delivery_address, // Delivery address array
-                    'customerIdentifiers' => (!is_null($customerIdentifiers)) ? $customerIdentifiers : array(), // Custom indentifiers
-                    'statementNarrative' => $data['statement-narrative'],
-                    'orderCodePrefix' => $data['code-prefix'],
-                    'orderCodeSuffix' => $data['code-suffix'],
-                    'customerOrderCode' => $data['customer-order-code'], // Order code of your choice
-                    'successUrl' => $data['success-url'], //Success redirect url for APM
-                    'pendingUrl' => $data['pending-url'], //Pending redirect url for APM
-                    'failureUrl' => $data['failure-url'], //Failure redirect url for APM
-                    'cancelUrl' => $data['cancel-url'] //Cancel redirect url for APM
-                );
-
-                if ($directOrder) {
-                    $obj['directOrder'] = true;
-                    $obj['shopperLanguageCode'] = isset($data['language-code']) ? $data['language-code'] : "";
-                    $obj['reusable'] = (isset($data['chkReusable']) && $data['chkReusable'] == 'on') ? true : false;
-
-                    $apmFields = array();
-                    if (isset($data['swiftCode'])) {
-                        $apmFields['swiftCode'] = $data['swiftCode'];
-                    }
-
-                    if (isset($data['shopperBankCode'])) {
-                        $apmFields['shopperBankCode'] = $data['shopperBankCode'];
-                    }
-
-                    if (empty($apmFields)) {
-                        $apmFields =  new stdClass();
-                    }
-
-                    $obj['paymentMethod'] = array(
-                          "apmName" => $data['apm-name'],
-                          "shopperCountryCode" => $data['countryCode'],
-                          "apmFields" => $apmFields
-                    );
-                }
-                else {
-                    $obj['token'] = $token; // The token from WorldpayJS
-                }
-
-                $response = $worldpay->createApmOrder($obj);
-
-                if ($response['paymentStatus'] === 'PRE_AUTHORIZED') {
-                    // Redirect to URL
-                    $_SESSION['orderCode'] = $response['orderCode'];
-                    ?>
-                    <script>
-                        window.location.replace("<?php echo $response['redirectURL'] ?>");
-                    </script>
-                    <?php
-                } else {
-                    // Something went wrong
-                    echo '<p id="payment-status">' . $response['paymentStatus'] . '</p>';
-                    throw new WorldpayException(print_r($response, true));
-                }
-
-            }
-            else {
-
-                $obj = array(
-                    'orderDescription' => $data['description'], // Order description of your choice
-                    'amount' => $amount, // Amount in pence
-                    'is3DSOrder' => $_3ds, // 3DS
-                    'authorizeOnly' => $authorizeOnly,
-                    'siteCode' => $data['site-code'],
-                    'orderType' => $data['order-type'], //Order Type: ECOM/MOTO/RECURRING
-                    'currencyCode' => $data['currency'], // Currency code
-                    'settlementCurrency' => $data['settlement-currency'], // Settlement currency code
-                    'name' => ($_3ds && true) ? '3D' : $name, // Customer name
-                    'shopperEmailAddress' => $shopperEmailAddress, // Shopper email address
-                    'billingAddress' => $billing_address, // Billing address array
-                    'deliveryAddress' => $delivery_address, // Delivery address array
-                    'customerIdentifiers' => (!is_null($customerIdentifiers)) ? $customerIdentifiers : array(), // Custom indentifiers
-                    'statementNarrative' => $data['statement-narrative'],
-                    'orderCodePrefix' => $data['code-prefix'],
-                    'orderCodeSuffix' => $data['code-suffix'],
-                    'customerOrderCode' => $data['customer-order-code'] // Order code of your choice
-                );
-
-                if ($directOrder) {
-                    $obj['directOrder'] = true;
-                    $obj['shopperLanguageCode'] = isset($data['language-code']) ? $data['language-code'] : "";
-                    $obj['reusable'] = (isset($data['chkReusable']) && $data['chkReusable'] == 'on') ? true : false;
-                    $obj['paymentMethod'] = array(
-                          "name" => $data['name'],
-                          "expiryMonth" => $data['expiration-month'],
-                          "expiryYear" => $data['expiration-year'],
-                          "cardNumber"=>$data['card'],
-                          "cvc"=>$data['cvc']
-                    );
-                }
-                else {
-                    $obj['token'] = $token; // The token from WorldpayJS
-                }
-
-                $response = $worldpay->createOrder($obj);
-
-                if ($response['paymentStatus'] === 'SUCCESS' ||  $response['paymentStatus'] === 'AUTHORIZED') {
-                    // Create order was successful!
-                    $worldpayOrderCode = $response['orderCode'];
-                    echo '<p>Order Code: <span id="order-code">' . $worldpayOrderCode . '</span></p>';
-                    echo '<p>Token: <span id="token">' . $response['token'] . '</span></p>';
-                    echo '<p>Payment Status: <span id="payment-status">' . $response['paymentStatus'] . '</span></p>';
-                    echo '<pre>' . print_r($response, true). '</pre>';
-                    // TODO: Store the order code somewhere..
-                } elseif ($response['is3DSOrder']) {
-                    // Redirect to URL
-                    // STORE order code in session
-                    $_SESSION['orderCode'] = $response['orderCode'];
-                    ?>
-                    <form id="submitForm" method="post" action="<?php echo $response['redirectURL'] ?>">
-                        <input type="hidden" name="PaReq" value="<?php echo $response['oneTime3DsToken']; ?>"/>
-                        <input type="hidden" id="termUrl" name="TermUrl" value="http://localhost/3ds_redirect.php"/>
-                        <script>
-                            document.getElementById('termUrl').value = window.location.href.replace('create_order.php', '3ds_redirect.php');
-                            document.getElementById('submitForm').submit();
-                        </script>
-                    </form>
-                    <?php
-                } else {
-                    // Something went wrong
-                    echo '<p id="payment-status">' . $response['paymentStatus'] . '</p>';
-                    throw new WorldpayException(print_r($response, true));
-                }
-            }
-        } catch (WorldpayException $e) { // PHP 5.3+
-            // Worldpay has thrown an exception
-            echo 'Error code: ' . $e->getCustomCode() . '<br/>
-            HTTP status code:' . $e->getHttpStatusCode() . '<br/>
-            Error description: ' . $e->getDescription()  . ' <br/>
-            Error message: ' . $e->getMessage();
-        }*/
-        dd($data);
+        $get_qb_data = DB::table('qb_integration')->first();
+        $this->check_and_create_creditcard($get_qb_data,$request);
+        dd("card created successfully");
 
     }
 
@@ -316,7 +139,15 @@ class SignupController extends Controller
         
         $data= $request->all();
 
-        $message = $this->taskservice->insertsave($data);
+        //$message = $this->taskservice->insertsave($data);
+
+        
+        $get_qb_data = DB::table('qb_integration')->first();
+       // dd($get_qb_data);
+
+        $this->check_and_create_customer($get_qb_data,$request);
+
+
         return redirect()->route('index')->with('success','Member created successfully');
         echo json_encode($message);      
        
@@ -385,4 +216,309 @@ class SignupController extends Controller
     {
         throw new \Exception('Method not implemented');
     }
+
+    public static function ds($token_json)
+    {
+        try {
+            $created_on = Carbon::now()->toDateTimeString();
+
+
+            $ds = Ds::Configure([
+                            'auth_mode' => 'oauth2',
+                            'ClientID' => config('quickbooks.client_id'),
+                            'ClientSecret' => config('quickbooks.client_secret'),
+                            'accessTokenKey' => $token_json->access_token,
+                            'refreshTokenKey' => $token_json->refresh_token,
+                            'QBORealmID' => $token_json->realmId,
+                            'baseUrl' => config('quickbooks.baseUrl')
+                        ]);
+
+                $tcreated_on = Carbon::createFromFormat('Y-m-d H:i:s', $token_json->created_on)
+                    ->addSeconds($token_json->expires_in);
+
+                if ($tcreated_on->lt(Carbon::now()))
+                {
+                    $OAuth2LoginHelper = $ds->getOAuth2LoginHelper();
+
+                    $accessToken = $OAuth2LoginHelper->refreshAccessTokenWithRefreshToken($token_json->refresh_token);
+
+                    $error = $OAuth2LoginHelper->getLastError();
+
+                   
+                    $accessTokenValue = $accessToken->getAccessToken();
+                $refreshTokenValue = $accessToken->getRefreshToken();
+                $access_token_expiry_time = $accessToken->getAccessTokenExpiresAt();
+                $refresh_token_expiry_time = $accessToken->getRefreshTokenExpiresAt();
+
+               // dd($refresh_token_expiry_time);
+                    $accessTokenExpiresAta = Carbon::parse($access_token_expiry_time)->format('Y-m-d H:i:s');
+                    $refresh_token_expiry_timea = Carbon::parse($refresh_token_expiry_time)->format('Y-m-d H:i:s');
+
+                    DB::table("qb_integration")->where('id',1)->update([
+                    //'type'=>$accessToken->tokenType,
+                    'access_token'=>$accessTokenValue,
+                    'refresh_token'=>$refreshTokenValue,
+                    'metadata'=>json_encode($accessToken),
+                    
+                    //'token_type'=>$accessToken->token_type,
+                    'expires_in'=>$accessTokenExpiresAta,
+                    'x_refresh_token_expires_in'=>$refresh_token_expiry_timea,
+                    
+                ]);
+                }
+         
+
+            return $ds;
+        } catch (\Exception $ex) {
+            //LogsHelper::LogErrorInfo('QUICKBOOKS', 'DS exception', $ex->getMessage());
+            throw $ex;
+        }
+    }
+
+    public static function generateTokenOnAuthorization($code, $realmId)
+    {
+        try {
+            $dataService = Ds::Configure([
+                'auth_mode' => 'oauth2',
+                'ClientID' => config('quickbooks.client_id'),
+                'ClientSecret' => config('quickbooks.client_secret'),
+                'RedirectURI' => config('quickbooks.redirect_uri'),
+                'baseUrl' => "development",
+                'scope' => "com.intuit.quickbooks.payment"
+            ]);
+
+            $OAuth2LoginHelper = $dataService->getOAuth2LoginHelper();
+
+            $accessToken = $OAuth2LoginHelper->exchangeAuthorizationCodeForToken($code, $realmId);
+            $accessTokenValue = $accessToken->getAccessToken();
+            $refreshTokenValue = $accessToken->getRefreshToken();
+            //dd($accessToken);
+
+            /*$authorizationCodeUrl = $OAuth2LoginHelper->getAuthorizationCodeURL();
+            //dd($authorizationCodeUrl);
+            return redirect($authorizationCodeUrl);
+            $accessTokenObj = $OAuth2LoginHelper->exchangeAuthorizationCodeForToken($code, $realmId);*/
+            //dd($accessTokenObj);
+            $dataService1 = Ds::Configure(array(
+                'auth_mode'       => 'oauth2',
+                'ClientID'        => config('quickbooks.client_id'),
+                'ClientSecret'    => config('quickbooks.client_secret'),
+                'accessTokenKey'  => $accessTokenValue,
+                'refreshTokenKey' => $refreshTokenValue,
+                'QBORealmID'      => $realmId,
+                'scope' => "com.intuit.quickbooks.accounting openid profile email phone address",
+                'baseUrl'         => "development"
+              ));
+             // $dataService->setLogLocation("/Users/hlu2/Desktop/newFolderForLog");
+              
+             // $dataService->throwExceptionOnError(true);
+              //Add a new Invoice
+              $theResourceObj = Invoice::create([
+                   "Line" => [
+                        [
+                            "Amount" => 100.00,
+                            "DetailType" => "SalesItemLineDetail",
+                            "SalesItemLineDetail" => 
+                            [
+                                "ItemRef" => 
+                                [
+                                    "value" => 20,
+                                    "name" => "Hours"
+                                ]
+                            ]
+                        ]
+                    ],
+                    "CustomerRef"=> 
+                    [
+                        "value"=> 58,
+                        "name"=>"Maan John"
+                    ]
+              ]);
+              //dd($theResourceObj);
+              $resultingObj = $dataService1->Add($theResourceObj);
+              
+              
+              $error = $dataService1->getLastError();
+              if ($error) {
+                  echo "The Status code is: " . $error->getHttpStatusCode() . "\n";
+                  echo "The Helper message is: " . $error->getOAuthHelperError() . "\n";
+                  echo "The Response message is: " . $error->getResponseBody() . "\n";
+              }
+              else {
+                  echo "Created Id={$resultingObj->Id}. Reconstructed response body:\n\n";
+                  $xmlBody = XmlObjectSerializer::getPostXmlFromArbitraryEntity($resultingObj, $urlResource);
+                  echo $xmlBody . "\n";
+              }
+            return [
+                'token_type' => 'bearer',
+                'expires_in' => $accessToken->getAccessTokenExpiresAt(),
+                'refresh_token' => $accessToken->getRefreshToken(),
+                'x_refresh_token_expires_in' => $accessToken->getAccessTokenExpiresAt(),
+                'access_token' => $accessToken->getAccessToken()
+            ];
+        } catch (\Exception $e) {
+          //  LogsHelper::LogErrorInfo('QUICKBOOKS', 'generateTokenOnAuthorization Exception', $e->getMessage());
+            throw $e;
+        }
+    }
+
+
+    public static function check_and_create_customer($token_json,$request)
+    {
+        try {
+                    $billAddr = null;
+                    $shipAddr = null;
+
+                    $customerObj = [
+                        "Title" => "MR",
+                        "GivenName" => $request->mname,
+                        "FamilyName" => $request->mname."_qbo_test",
+                       /* "BillAddr" => $billAddr,
+                        "ShipAddr" => $shipAddr,
+                        "Notes" => $customer->notes,*/
+                        "DisplayName" => $request->mname,
+                        "CompanyName" => $request->mname.".test.com",
+                        /*"WebAddr" => [
+                            "URI" => $customer->website
+                        ],
+                        "PrimaryPhone" => [
+                            "FreeFormNumber" => $customer->phone
+                        ],
+                        "PrimaryEmailAddr" => [
+                            "Address" => $customer->email
+                        ]*/
+                    ];
+
+                    //$customerObj = (!empty($qbTermId)) ? array_merge($customerObj, ["SalesTermRef" => ["value" => $qbTermId]]) : $customerObj;
+//dd($customerObj);
+                    $qbCustomerRes = self::create_entities(["customer" => Customer::create($customerObj)], true,$token_json);
+                    
+                    if (empty($qbCustomer = reset($qbCustomerRes))) {
+                        throw new \Exception('Customer not created in Quickbooks.');
+                    }
+               
+
+               
+                return true; 
+        } catch (\Exception $ex) {
+          //  LogsHelper::LogErrorInfo('QUICKBOOKS', 'CREATE CUSTOMER', $ex->getMessage(), $customer);
+            throw $ex;
+        }
+    }
+    public static function createCardBody()
+    {
+        $cardBody = CardOperations::buildFrom([
+        "expMonth"=> "12",
+            "address"=> [
+              "postalCode"=> "44112",
+              "city"=> "Richmond",
+              "streetAddress"=> "1245 Hana Rd",
+              "region"=> "VA",
+              "country"=> "US"
+            ],
+            "number"=> "4131979708684369",
+            "name"=> "Test User",
+            "expYear"=> "2026"
+      ]);
+        //dd($cardBody);
+        return $cardBody;
+    }    
+    public static function check_and_create_creditcard($token_json,$request)
+    {
+        try {
+               
+                $cartObj = [
+                    "expMonth" => $request->mm_exp,
+                    "expYear" => $request->year_exp,
+                    "number" => $request->cardnumber,
+                    "name" => $request->cardName,
+                    "cvc" => $request->cvv,
+                    "address"=> [
+                    "postalCode"=> "44112", 
+                    "city"=> "Richmond", 
+                    "streetAddress"=> "1245 Hana Rd", 
+                    "region"=> "VA", 
+                    "country"=> "US"
+                    ], 
+                ];
+                
+                $card = self::createCardBody();
+//dd($token_json->access_token);
+                $client = new PaymentClient([
+                        'access_token' => $token_json->access_token,
+                        'environment' => "sandbox"
+                    ]);
+                $clientId =$request->custid;
+                
+               // dd($card);
+                /*$charge = ChargeOperations::buildFrom($cartObj);
+                
+                $response = $client->charge($charge);*/
+                //$qbCustomerRes =  $client->createCard($card,$clientId);
+               // $res = $client->getCard($clientId,374245455400126);
+               // $id1 = $qbCustomerRes->getBody();
+               // dd($id1);
+                $response2 = $client->getCard($clientId,"101181771467005695754369");
+                dd($response2);
+               
+                $id2 = $response2->getBody()->id;
+                $secureCardNumber2 = $response->getBody()->number;
+
+                dd($id2);
+                
+                if (empty($qbCustomer = reset($qbCustomerRes))) {
+                    throw new \Exception('cards not created in Quickbooks.');
+                }
+                return true; 
+        } catch (\Exception $ex) {
+          //  LogsHelper::LogErrorInfo('QUICKBOOKS', 'CREATE CUSTOMER', $ex->getMessage(), $customer);
+            throw $ex;
+        }
+    }
+
+    public static function create_entities( $entities, $throw = false,$token_json)
+    {
+        try 
+        {
+           // dd($token_json);
+            $ds = self::ds($token_json);
+
+            if (!defined('QUICKBOOKS_API_TIMEOUT')) {
+                define('QUICKBOOKS_API_TIMEOUT', 90);
+            }
+
+            //$ds->setMinorVersion(12);
+            $batch = $ds->CreateNewBatch();
+
+            $res = [];
+            foreach ($entities ?: [] as $key => $entity) {
+                $res[$key] = null;
+                $batch->AddEntity($entity, $key, "add");
+            }
+
+            $batch->Execute();
+
+            $error = $batch->getLastError();
+            //dd($error->getResponseBody());
+            if ($error != null) {
+               // throw new \Exception($error->getIntuitErrorMessage() ?: $error->getResponseBody(), $error->getIntuitErrorCode() ?: $error->getHttpStatusCode());
+            }
+
+            foreach ($batch->intuitBatchItemResponses ?: [] as $response) {
+                $res[$response->batchItemId] = ($response->responseType == 1) ? $response->entity : null;
+
+                if ($response->responseType == 3) {
+                    if ($throw === true) {
+                        throw $response->exception;
+                    }
+                }
+            }
+
+            return $res;
+        } catch (\Exception $ex) {
+            //LogsHelper::LogErrorInfo('QUICKBOOKS', 'create_entities exception ' . $ex->getCode(), $ex->getMessage());
+            throw $ex;
+        }
+    }
+
 }

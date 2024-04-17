@@ -16,8 +16,13 @@ Route::get('/welcome', function () {
 });
 
 Route::get('/',['as'=> "index","uses" => "SignupController@index"]);
+
 Route::get('/makeorder',['as'=> "makeorder","uses" => "SignupController@makeorder"]);
-Route::post('/checkout',['as'=> "checkouts","uses" => "SignupController@checkout"]);
+
+Route::get('/qbo',['as'=> "qbo","uses" => "QuickBooksController@OAuth_url"]);
+Route::post('/qbo',['as'=> "qbo","uses" => "QuickBooksController@OAuth_response"]);
+
+Route::post('/checkout',['as'=> "checkout","uses" => "SignupController@checkout"]);
 Route::get('/signup',['as'=> "signup","uses" => "SignupController@create"]);
 Route::post('/signup',['as'=> "signup","uses" => "SignupController@store"]);
 Route::get('/edit/{id}',['as'=> "edit","uses" => "SignupController@edit"]);
@@ -34,6 +39,16 @@ Route::get('status', 'PaymentController@getPaymentStatus');
 Route::get('/worldpay', function () {
     return view('vendor/alvee/worldpay');
 });
+
+/*Route::get('quickbooks', [QuickBooksController::class, 'check_status']);
+Route::get('quickbooks/oauth', [QuickBooksController::class, 'OAuth_url']);
+Route::post('quickbooks/oauth', [QuickBooksController::class, 'OAuth_response']);*/
+/*Route::get('quickbooks/disconnect', [QuickBooksController::class, 'disconnect']);
+Route::post('quickbooks/quickbooks-queue', [QuickBooksController::class, 'quickbooks_queue']);
+Route::get('quickbooks/account', [QuickBooksController::class, 'get_account']);
+Route::put('quickbooks/account', [QuickBooksController::class, 'set_account']);
+Route::get('quickbooks/auth', [QuickBooksController::class, 'auth']);
+Route::get('quickbooks/classes', [QuickBooksController::class, 'classes']);*/
 /*Route::post('/checkout', function (\Illuminate\Http\Request $request) {
 $token    = $request->input( 'token' );
     $total    = 50;
